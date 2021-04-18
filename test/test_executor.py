@@ -75,29 +75,41 @@ class ResponseListTestCase(unittest.TestCase):
     """Tests for ResponseList"""
 
     @staticmethod
-    def responses_from_times(times):
-        """Generates a list of empty responses from a list of time elapsed
+    def responses_from_times_success(times):
+        """Generates a list of successful responses from a list of time elapsed
 
         :param times: List of time elapsed for each response
         :type times: list
         :return: List of responses
         :rtype: executor.ResponseList"""
-        return executor.ResponseList([executor.Response(None, _) for _ in times])
+        return executor.ResponseList([SuccessfulResponseMock(None, _) for _ in times])
+
+    @staticmethod
+    def responses_from_times_failed(times):
+        """Generates a list of failing responses from a list of time elapsed
+
+        :param time_messages: List of [time,message] time is elapsed for each response,
+        message is error message
+        :type times: list
+        :return: List of responses
+        :rtype: executor.ResponseList"""
+
+        return executor.ResponseList([FailingResponseMock(None, _) for _ in times])
 
     def test_rtt_min_ms(self):
         """Verifies the minimum RTT is found correctly"""
         self.assertEqual(
-            self.responses_from_times([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).rtt_min,
+            self.responses_from_times_success([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).rtt_min,
             0,
             'Unable to identify minimum RTT of 0'
         )
         self.assertEqual(
-            self.responses_from_times([38, 11, 93, 100, 38, 11, 0.1]).rtt_min,
+            self.responses_from_times_success([38, 11, 93, 100, 38, 11, 0.1]).rtt_min,
             0.1,
             'Unable to identify minimum RTT of 0.1'
         )
         self.assertEqual(
-            self.responses_from_times([10, 10, 10, 10]).rtt_min,
+            self.responses_from_times_success([10, 10, 10, 10]).rtt_min,
             10,
             'Unable to identify minimum RTT of 10 on a series of only 10s'
         )
@@ -105,17 +117,17 @@ class ResponseListTestCase(unittest.TestCase):
     def test_rtt_max_ms(self):
         """Verifies the maximum RTT is found correctly"""
         self.assertEqual(
-            self.responses_from_times([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).rtt_max,
+            self.responses_from_times_success([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).rtt_max,
             9,
             'Unable to identify maximum RTT of 9'
         )
         self.assertEqual(
-            self.responses_from_times([38, 11, 93, 100, 38, 11, 0.1]).rtt_max,
+            self.responses_from_times_success([38, 11, 93, 100, 38, 11, 0.1]).rtt_max,
             100,
             'Unable to identify maximum RTT of 100'
         )
         self.assertEqual(
-            self.responses_from_times([10, 10, 10, 10]).rtt_max,
+            self.responses_from_times_success([10, 10, 10, 10]).rtt_max,
             10,
             'Unable to identify maximum RTT of 10 on a series of only 10s'
         )
@@ -123,17 +135,17 @@ class ResponseListTestCase(unittest.TestCase):
     def test_rtt_avg_ms(self):
         """Verifies the average RTT is found correctly"""
         self.assertEqual(
-            self.responses_from_times([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).rtt_avg,
+            self.responses_from_times_success([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).rtt_avg,
             4.5,
             'Unable to identify average RTT of 4.5'
         )
         self.assertEqual(
-            self.responses_from_times([38, 11, 93, 100, 38, 11, 0.1]).rtt_avg,
+            self.responses_from_times_success([38, 11, 93, 100, 38, 11, 0.1]).rtt_avg,
             41.58571428571429,
             'Unable to identify average RTT of 41.58571428571429'
         )
         self.assertEqual(
-            self.responses_from_times([10, 10, 10, 10]).rtt_avg,
+            self.responses_from_times_success([10, 10, 10, 10]).rtt_avg,
             10,
             'Unable to identify average RTT of 10 on a series of only 10s'
         )
@@ -141,17 +153,17 @@ class ResponseListTestCase(unittest.TestCase):
     def test_len(self):
         """Verifies the length is returned correctly"""
         self.assertEqual(
-            len(self.responses_from_times(list(range(10)))),
+            len(self.responses_from_times_success(list(range(10)))),
             10,
             'Unable identify the length of 10'
         )
         self.assertEqual(
-            len(self.responses_from_times(list(range(0)))),
+            len(self.responses_from_times_success(list(range(0)))),
             0,
             'Unable identify the length of 0'
         )
         self.assertEqual(
-            len(self.responses_from_times(list(range(23)))),
+            len(self.responses_from_times_success(list(range(23)))),
             23,
             'Unable identify the length of 23'
         )
@@ -159,7 +171,7 @@ class ResponseListTestCase(unittest.TestCase):
     def test_iterable(self):
         """Verifies it is iterable"""
         self.assertTrue(
-            isinstance(self.responses_from_times([0, 1, 2, 3]), collections.abc.Iterable),
+            isinstance(self.responses_from_times_success([0, 1, 2, 3]), collections.abc.Iterable),
             'Unable to iterate over ResponseList object'
         )
 
@@ -303,6 +315,80 @@ class ResponseListTestCase(unittest.TestCase):
             "Unable to calculate packet loss correctly when failing responses are mixed with successful responses"
         )
 
+    def test_rtt_max_ms_lost(self):
+        """Verifies the maximum RTT is found correctly even with lost packets"""
+        self.assertEqual(
+            self.responses_from_times_failed([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).rtt_max,
+            0,
+            'Unable to identify maximum RTT of 0 when all packets are lost'
+        )
+        test = executor.ResponseList(
+            self.responses_from_times_failed([2000, 2000, 2000])._responses + self.responses_from_times_success(
+                [100, 38, 11, 0.1])._responses)
+        self.assertEqual(
+            test.rtt_max,
+            100,
+            'Unable to identify maximum RTT of 100 when half packets are lost'
+        )
+        test = executor.ResponseList(
+            self.responses_from_times_success([10])._responses + self.responses_from_times_failed(
+                [2000])._responses + self.responses_from_times_success(
+                [10, 10])._responses)
+        self.assertEqual(
+            test.rtt_max,
+            10,
+            'Unable to identify maximum RTT of 10 when some packets are lost'
+        )
+
+    def test_rtt_avg_ms_lost(self):
+        """Verifies the average RTT is found correctly even with lost packets"""
+        test = executor.ResponseList(self.responses_from_times_failed(
+            [2000, 2000, 2000, 2000, 2000])._responses + self.responses_from_times_success(
+            [1, 3, 5, 7, 9])._responses)
+        self.assertEqual(
+            test.rtt_avg,
+            5,
+            'Unable to identify average RTT of 5 when half the packets are lost'
+        )
+        test = executor.ResponseList(
+            self.responses_from_times_success([38])._responses + self.responses_from_times_failed(
+                [2000])._responses + self.responses_from_times_success(
+                [93, 100, 38, 11, 0.1])._responses)
+        self.assertEqual(
+            test.rtt_avg,
+            46.68333333333334,
+            'Unable to identify average RTT of 46.68333333333334 when some packets are lost'
+        )
+        self.assertEqual(
+            self.responses_from_times_failed([10, 10, 10, 10]).rtt_avg,
+            10,
+            'Unable to identify average RTT of 0 when all packets are lost'
+        )
+
+    def test_rtt_min_ms_lost(self):
+        """Verifies the minimum RTT is found correctly even with lost packets"""
+        test = executor.ResponseList(
+            self.responses_from_times_failed([2000, 2000])._responses + self.responses_from_times_success(
+                [2, 3, 4, 5])._responses +
+            self.responses_from_times_failed([2000, 2000, 2000, 2000])._responses)
+        self.assertEqual(
+            test.rtt_min,
+            2,
+            'Unable to identify minimum RTT of 2 when some packets are lost'
+        )
+        self.assertEqual(
+            self.responses_from_times_failed([2000, 2000, 2000, 2000, 2000, 2000, 2000]).rtt_min,
+            0,
+            'Unable to identify minimum RTT of 0 when all packets are lost'
+        )
+        test = executor.ResponseList(
+            self.responses_from_times_failed([2000, 2000])._responses + self.responses_from_times_success(
+                [10, 10])._responses)
+        self.assertEqual(
+            self.responses_from_times_success([10, 10, 10, 10]).rtt_min,
+            10,
+            'Unable to identify minimum RTT of 10 when half packets are lost'
+        )
 
 class CommunicatorTestCase(unittest.TestCase):
     """Tests for Communicator"""
